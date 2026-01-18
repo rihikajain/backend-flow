@@ -1,0 +1,445 @@
+{
+	"info": {
+		"_postman_id": "job-processing-service-collection",
+		"name": "Job Processing Service API",
+		"description": "Complete API collection for testing the async job processing service with Celery and MongoDB",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Test Scenarios",
+			"item": [
+				{
+					"name": "Scenario 1: Complete Job Flow",
+					"item": [
+						{
+							"name": "Step 1: Create Job",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"var jsonData = pm.response.json();",
+											"pm.environment.set('scenario_job_id', jsonData.job_id);",
+											"pm.environment.set('scenario_doc_id', jsonData.doc_id);"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"doc_id\": \"scenario-1-{{$timestamp}}\",\n    \"payload\": {\n        \"scenario\": \"complete-flow\",\n        \"data\": \"test data\"\n    },\n    \"webhook_url\": \"http://api:8000/webhook-receiver\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{base_url}}/jobs",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"jobs"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Step 2: Check Status (Wait 5s)",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/jobs/{{scenario_job_id}}",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"jobs",
+										"{{scenario_job_id}}"
+									]
+								},
+								"description": "Wait 5 seconds after Step 1, then check status. Should be SUCCEEDED."
+							},
+							"response": []
+						},
+						{
+							"name": "Step 3: Verify Result",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test(\"Job succeeded\", function () {",
+											"    var jsonData = pm.response.json();",
+											"    pm.expect(jsonData.status).to.eql('SUCCEEDED');",
+											"});",
+											"",
+											"pm.test(\"Has result with data_hash\", function () {",
+											"    var jsonData = pm.response.json();",
+											"    pm.expect(jsonData.result).to.have.property('data_hash');",
+											"});"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/jobs/{{scenario_job_id}}",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"jobs",
+										"{{scenario_job_id}}"
+									]
+								}
+							},
+							"response": []
+						}
+					],
+					"description": "Complete end-to-end test: Create job → Wait → Verify success"
+				},
+				{
+					"name": "Scenario 2: Idempotency Test",
+					"item": [
+						{
+							"name": "Step 1: Create Job",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"var jsonData = pm.response.json();",
+											"pm.environment.set('idempotent_job_id', jsonData.job_id);",
+											"pm.environment.set('idempotent_doc_id', jsonData.doc_id);"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"doc_id\": \"idempotent-test-{{$timestamp}}\",\n    \"payload\": {\n        \"first\": \"submission\"\n    },\n    \"webhook_url\": \"http://api:8000/webhook-receiver\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{base_url}}/jobs",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"jobs"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Step 2: Submit Same doc_id",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test(\"Returns existing job\", function () {",
+											"    var jsonData = pm.response.json();",
+											"    pm.expect(jsonData.is_new).to.be.false;",
+											"});",
+											"",
+											"pm.test(\"Same job_id returned\", function () {",
+											"    var jsonData = pm.response.json();",
+											"    var originalJobId = pm.environment.get('idempotent_job_id');",
+											"    pm.expect(jsonData.job_id).to.eql(originalJobId);",
+											"});"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"doc_id\": \"{{idempotent_doc_id}}\",\n    \"payload\": {\n        \"different\": \"data - should be ignored\"\n    },\n    \"webhook_url\": \"http://different.com/webhook\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{base_url}}/jobs",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"jobs"
+									]
+								}
+							},
+							"response": []
+						}
+					],
+					"description": "Test that submitting the same doc_id returns the existing job (idempotency)"
+				},
+				{
+					"name": "Scenario 3: Multiple Jobs",
+					"item": [
+						{
+							"name": "Create Job 1",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"var jsonData = pm.response.json();",
+											"pm.environment.set('job1_id', jsonData.job_id);"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"doc_id\": \"multi-job-1-{{$timestamp}}\",\n    \"payload\": {\n        \"job_number\": 1\n    },\n    \"webhook_url\": \"http://api:8000/webhook-receiver\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{base_url}}/jobs",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"jobs"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Create Job 2",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"var jsonData = pm.response.json();",
+											"pm.environment.set('job2_id', jsonData.job_id);"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"doc_id\": \"multi-job-2-{{$timestamp}}\",\n    \"payload\": {\n        \"job_number\": 2\n    },\n    \"webhook_url\": \"http://api:8000/webhook-receiver\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{base_url}}/jobs",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"jobs"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Check Both Jobs Status",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/jobs/{{job1_id}}",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"jobs",
+										"{{job1_id}}"
+									]
+								},
+								"description": "Check status of first job"
+							},
+							"response": []
+						}
+					],
+					"description": "Test creating and tracking multiple jobs simultaneously"
+				}
+			]
+		},
+		{
+			"name": "Webhook Receiver",
+			"item": [
+				{
+					"name": "Receive Webhook",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Webhook received\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.received).to.be.true;",
+									"});",
+									"",
+									"pm.test(\"Has timestamp\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('timestamp');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Idempotency-Key",
+								"value": "test-delivery-id-{{$timestamp}}",
+								"description": "Idempotency key for delivery"
+							},
+							{
+								"key": "X-Job-ID",
+								"value": "{{job_id}}",
+								"description": "Job identifier"
+							},
+							{
+								"key": "X-Delivery-Attempt",
+								"value": "1",
+								"description": "Delivery attempt number"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"job_id\": \"{{job_id}}\",\n    \"status\": \"completed\",\n    \"result\": {\n        \"processed\": true,\n        \"data\": \"sample result\"\n    },\n    \"delivered_at\": \"2026-01-16T10:00:00Z\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/webhook-receiver",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"webhook-receiver"
+							]
+						},
+						"description": "Simulate receiving a webhook notification when a job completes. This is what external systems would receive."
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000",
+			"type": "string"
+		},
+		{
+			"key": "job_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "doc_id_for_idempotency",
+			"value": "",
+			"type": "string"
+		}
+	]
+}
